@@ -32,7 +32,6 @@ import cv2
 
 
 
-
 def visual_callback_2d(background, name, output_dir, fig=None):
     """
     Returns a callback than can be passed as the argument `iter_callback`
@@ -89,7 +88,7 @@ def visual_callback_2d(background, name, output_dir, fig=None):
 
 def do_nothing(background, name, output_dir, fig=None):
     """
-    Literally, it does nothing. 
+    Literally, it does nothing. Used to run MorphGAC.
     """  
 
     def callback(levelset, iteration, iterations_num):         
@@ -100,23 +99,33 @@ def do_nothing(background, name, output_dir, fig=None):
 
 
 
-def read_filenames(input_path, output_path, label_path, BBox_path):
-    
-    "Finds and sorts the respective files in the paths."
-    
+def read_filenames(input_path, output_path, BBox_path):
+    """
+    Finds and sorts the respective files in the paths.
+    """
     images = glob.glob(input_path+'*_0082_*.tiff', recursive=True) 
-    images = sorted(images, key=lambda f: int(''.join(filter(str.isdigit, f))))  
-    
-    labels = glob.glob(label_path+'*_0082_*.tiff', recursive=True) 
-    labels = sorted(labels, key=lambda f: int(''.join(filter(str.isdigit, f))))     
+    images = sorted(images, key=lambda f: int(''.join(filter(str.isdigit, f))))    
  
-#    BB_path = '/home/agapi/Desktop/MasterThesis/Yolo_pancreas/BoundingBoxes_NIH_test_-200_300/'
     boundingBoxes = glob.glob(BBox_path+'*.txt', recursive=True) 
     boundingBoxes = sorted(boundingBoxes, key=lambda f: int(''.join(filter(str.isdigit, f))))
        
-    return images, labels, boundingBoxes
+    return images, boundingBoxes
 
            
+def get_BB_coordinates(BBarray, margin):
+    """
+    Gets as input the Bounding Box array and a margin parameter.
+    Margin parameter is optional and is the number of pixels from the actual Bounding Box.
+    Returns the Bounding Box coordinates.
+    """
+    
+    x_1 = int(BBarray[0]) - margin #-10 
+    x_2 = x_1 + int(BBarray[2]) + 2* margin #+ 20 
+    y_1 = int(BBarray[1]) - margin #- 10 
+    y_2 = y_1 + int(BBarray[3]) + 2* margin #+ 20    
+    
+    return x_1, x_2, y_1, y_2
+
 
 
 if __name__=='__main__':
@@ -124,10 +133,9 @@ if __name__=='__main__':
     #Initialize the paths
     input_image_path = '/home/agapi/Desktop/MasterThesis/Datasets/NIH_tiff_16bit_range_-200_300_rotated/' #Location of testing images.
     output_image_path = '/home/agapi/Desktop/MasterThesis/Morphsnakes/results/' #Location of output images.
-    label_image_path = '/home/agapi/Desktop/MasterThesis/Datasets/NIH_labels_edited_tiff/' #Location of label images.
     BB_path = '/home/agapi/Desktop/MasterThesis/Yolo_pancreas/BoundingBoxes_NIH_test_-200_300/'
 
-    [test_filenames,label_filenames, BB_filenames] = read_filenames(input_image_path, output_image_path, label_image_path, BB_path)
+    [test_filenames, BB_filenames] = read_filenames(input_image_path, output_image_path, BB_path)
         
         
     for BB in BB_filenames:    
@@ -147,30 +155,27 @@ if __name__=='__main__':
             bounding_box = bounding_box[:-2] #Remove '/n' characters from array.
             bounding_box = np.fromstring(bounding_box, dtype=np.int, sep=' ') #Convert string array to np.array.
             
-            # Get bounding box  (Add some margin to the cropping area.)
-            x1 = int(bounding_box[0]) #-10 
-            x2 = x1 + int(bounding_box[2]) #+ 20 
-            y1 = int(bounding_box[1]) #- 10 
-            y2 = y1 + int(bounding_box[3]) #+ 20                     
-                                
-            #Crops each detection/bounding box
+            # Get bounding box  (Change 0 to another value to add margin).
+            [x1, x2, y1, y2] = get_BB_coordinates(bounding_box, 0)
+                                             
+            #Crops each detection/bounding box.
             test_image_cropped = original_image_array[y1:y2, x1:x2]        
             
-            #Apply MorphGAC on the cropped image
+            #Apply MorphGAC on the cropped image.
             print('Running: MorphGAC...')        
             img = test_image_cropped[:,:,0]              
             gimg = ms.inverse_gaussian_gradient(img, alpha=1000, sigma=2)   
                      
-            # Initialization of the level set
+            # Initialization of the level set from the center of the Bounding Box.
             init_ls = ms.circle_level_set(img.shape, (int(img.shape[0]/2), int(img.shape[1]/2)), 2)        
             filename = os.path.basename(image_name)           
             
             # Callback for visual plotting        
-#            callback = visual_callback_2d(img, filename, output_image_path)        
+#            callback = visual_callback_2d(img, filename, output_image_path) #Uncomment to plot figures.
             callback = do_nothing(img, filename, output_image_path)        
             
         
-            # MorphGAC. 
+            # Apply the MorphGAC algorithm for each Bounding Box. 
             BB_segmentation = ms.morphological_geodesic_active_contour(gimg, iterations=50, init_level_set=init_ls,
                                                      smoothing=1, threshold=0.31,
                                                      balloon=1, iter_callback = callback)
@@ -180,10 +185,7 @@ if __name__=='__main__':
                 for y in range(y1, y2):
                     final_image[y,x] = BB_segmentation[y-y1, x-x1]       
                     
-                    
+            #Save images in tiff format. 
             scipy.misc.imsave(os.path.join(output_image_path, os.path.basename(image_name)), final_image*255)
                     
-#        fig = plt.figure()
-#        ax1 = fig.add_subplot(1, 2, 1)
-#        ax1.imshow(final_image, cmap=plt.cm.gray)
-#        plt.pause(0.001)        
+   
