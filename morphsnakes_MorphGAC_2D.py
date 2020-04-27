@@ -87,26 +87,16 @@ def visual_callback_2d(background, name, output_dir, fig=None):
     
 
 
-def save_segmentation_tiff(background, name, output_dir):
+def do_nothing(background, name, output_dir, fig=None):
     """
-    Returns a callback than can be passed as the argument `iter_callback`
-    of `morphological_geodesic_active_contour` and
-    `morphological_chan_vese` for saving the final segmentation. 
-    Only works for 2D images.
-    
-    """         
-    segmentation_image = np.zeros_like(background)
+    Literally, it does nothing. 
+    """  
 
-
-    def callback(levelset, iteration, iterations_num):              
-
-        segmentation_image = levelset
-        
-        #Save the final segmentation:
-        if iteration == iterations_num-1:
-            scipy.misc.imsave(os.path.join(output_dir, str(name[:-5]) + ".tiff"), segmentation_image)
-
+    def callback(levelset, iteration, iterations_num):         
+        pass
+            
     return callback
+    
 
 
 
@@ -126,7 +116,7 @@ def read_filenames(input_path, output_path, label_path, BBox_path):
        
     return images, labels, boundingBoxes
 
-
+           
 
 
 if __name__=='__main__':
@@ -139,8 +129,7 @@ if __name__=='__main__':
 
     [test_filenames,label_filenames, BB_filenames] = read_filenames(input_image_path, output_image_path, label_image_path, BB_path)
         
-    
-    
+        
     for BB in BB_filenames:    
         
         #Create empty 512x512 2D array with zeros. 
@@ -168,34 +157,33 @@ if __name__=='__main__':
             test_image_cropped = original_image_array[y1:y2, x1:x2]        
             
             #Apply MorphGAC on the cropped image
-            print('Running: MorphGAC...')
-        
-        
-            img = test_image_cropped[:,:,0]
-           
-    
-            gimg = ms.inverse_gaussian_gradient(img, alpha=1000, sigma=2)            
-            
+            print('Running: MorphGAC...')        
+            img = test_image_cropped[:,:,0]              
+            gimg = ms.inverse_gaussian_gradient(img, alpha=1000, sigma=2)   
+                     
             # Initialization of the level set
-            init_ls = ms.circle_level_set(img.shape, (int(img.shape[0]/2), int(img.shape[1]/2)), 2)
-        
-            filename = os.path.basename(image_name)
+            init_ls = ms.circle_level_set(img.shape, (int(img.shape[0]/2), int(img.shape[1]/2)), 2)        
+            filename = os.path.basename(image_name)           
             
             # Callback for visual plotting        
-            callback = visual_callback_2d(img, filename, output_image_path)
-        
-                # Callback for saving segmentation as .tiff image    
-#            callback = save_segmentation_tiff(img, filename, output_image_path)
+#            callback = visual_callback_2d(img, filename, output_image_path)        
+            callback = do_nothing(img, filename, output_image_path)        
+            
         
             # MorphGAC. 
-            ms.morphological_geodesic_active_contour(gimg, iterations=50, init_level_set=init_ls,
+            BB_segmentation = ms.morphological_geodesic_active_contour(gimg, iterations=50, init_level_set=init_ls,
                                                      smoothing=1, threshold=0.31,
-                                                     balloon=1, iter_callback=callback)
-        
-            
-            
-            
-            
-            
-            
-            #Put the segmentation on the empty 512x512 image
+                                                     balloon=1, iter_callback = callback)
+                                
+            #Put the segmentation to its original position in the 512x512 image.
+            for x in range(x1, x2):
+                for y in range(y1, y2):
+                    final_image[y,x] = BB_segmentation[y-y1, x-x1]       
+                    
+                    
+            scipy.misc.imsave(os.path.join(output_image_path, os.path.basename(image_name)), final_image*255)
+                    
+#        fig = plt.figure()
+#        ax1 = fig.add_subplot(1, 2, 1)
+#        ax1.imshow(final_image, cmap=plt.cm.gray)
+#        plt.pause(0.001)        
