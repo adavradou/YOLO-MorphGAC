@@ -16,14 +16,13 @@ import matplotlib
 from matplotlib import pyplot as plt
 import SimpleITK as sitk
 import glob
-
-
 import matplotlib.gridspec as gridspec
 plt.switch_backend('agg')
 from skimage.measure import find_contours
+import nibabel as nib
 
 
-def make_plots(X, y, y_pred, n_best=20, n_worst=20):
+def make_2D_plots(X, y, y_pred, n_best=20, n_worst=20):
     #PLotting the results'
     img_rows = X.shape[1]
     img_cols = img_rows
@@ -43,8 +42,7 @@ def make_plots(X, y, y_pred, n_best=20, n_worst=20):
 
     segm_pred = y_pred[img_list].reshape(-1,img_rows, img_cols)
     img = X[img_list].reshape(-1,img_rows, img_cols)
-    segm = y[img_list].reshape(-1, img_rows, img_cols).astype('float32')    
-    
+    segm = y[img_list].reshape(-1, img_rows, img_cols).astype('float32')       
     
     n_cols= 4
     n_rows = int( np.ceil(len(img)/n_cols) )
@@ -69,9 +67,8 @@ def make_plots(X, y, y_pred, n_best=20, n_worst=20):
         ax.set_yticks([])
         ax.set_aspect(1)  # aspect ratio of 1
 
-    fig.savefig('../images/best_predictions_train.png', bbox_inches='tight', dpi=300 )
-    
-    
+    fig.savefig('../Morphsnakes/2D_plots/best_predictions_train.png', bbox_inches='tight', dpi=300 )
+        
 
     img_list = []
     count = 1
@@ -110,27 +107,70 @@ def make_plots(X, y, y_pred, n_best=20, n_worst=20):
         ax.set_yticks([])
         ax.set_aspect(1)  # aspect ratio of 1
 
-    fig.savefig('../images/worst_predictions_train.png', bbox_inches='tight', dpi=300 )
+    fig.savefig('../Morphsnakes/2D_plots/worst_predictions_train.png', bbox_inches='tight', dpi=300 )
     
     
+    
+def make_3D_plots(background, filename, fig = None):
+   
+    from mpl_toolkits.mplot3d import Axes3D
+    # PyMCubes package is required for `visual_callback_3d`
+    try:
+        import mcubes
+    except ImportError:
+        raise ImportError("PyMCubes is required for 3D `visual_callback_3d`")
+    
+    # Prepare the visual environment.
+    if fig is None:
+        fig = plt.figure()
+    fig.clf()
+    ax = fig.add_subplot(111, projection='3d')
+
+    if ax.collections:
+        del ax.collections[0]
+
+    coords, triangles = mcubes.marching_cubes(background, 0.5)
+    ax.plot_trisurf(coords[:, 0], coords[:, 1], coords[:, 2],
+                    triangles=triangles)
+    plt.pause(0.1)
+    fig.savefig(os.path.join('/home/agapi/Desktop/MasterThesis/Morphsnakes', filename + ".png"))
+
+
+
 
 def numpy_dice(y_true, y_pred, axis=None, smooth=1.0):
 
     intersection = y_true*y_pred
-
     return ( 2. * intersection.sum(axis=axis) +smooth)/ (np.sum(y_true, axis=axis) + np.sum(y_pred, axis=axis) +smooth )
 
 
 
 def check_predictions(data, true_label, prediction, plot):
 
-    if not os.path.isdir('../images'):
-        os.mkdir('../images')
+    if not os.path.isdir('../Morphsnakes/2D_plots'):
+        os.mkdir('../Morphsnakes/2D_plots')
   
     print('Accuracy:', numpy_dice(true_label, prediction))
 	
-    make_plots(data, true_label, prediction)
+    #Create 2D plots with best and worst predictions
+    make_2D_plots(data, true_label, prediction)
     
+    
+    #Create the 3D plot of the real label and the prediction respectively.
+
+#    for i in range(3):
+#        true_label = np.transpose(true_label, (1, 2, 0))
+#        for angle in range(4):
+#            true_label = np.rot90(true_label)
+#            make_3D_plots(true_label, "true_label_3D_plot" + str(i) + str(angle))
+
+#    for i in range(3):
+#        prediction = np.transpose(prediction, (1, 2, 0))
+#        for angle in range(4):
+#            prediction = np.rot90(prediction)
+#            make_3D_plots(prediction, "predicted_label_3D_plot" + str(i) + str(angle))
+            
+#    make_3D_plots(np.rot90(prediction, k=1), "predicted_label_3D_plot")
 
 
 
@@ -141,16 +181,15 @@ def read_cases(the_list=None, folder='../data/train/', masks=True):
     for filename in filenames:
         itkimage = sitk.ReadImage(filename)
         itkimage = sitk.Flip(itkimage, [False, True, False]) #Flip images, because they are shown reversed.
-        imgs = sitk.GetArrayFromImage(itkimage)
-        return imgs, itkimage.GetSpacing()[::-1]
+        img = sitk.GetArrayFromImage(itkimage)
+        return img
 
 
 
 if __name__=='__main__':
 
-    x_data, spacing_true = read_cases(folder = '/home/agapi/Desktop/MasterThesis/Datasets/NIH_nii')
-    y_true, spacing_true = read_cases(folder = '/home/agapi/Desktop/MasterThesis/Datasets/NIH_labels_edited')
-    y_pred, spacing_pred = read_cases(folder = '/home/agapi/Desktop/MasterThesis/Morphsnakes/nii_test')  
-#    y_pred, spacing_pred = read_cases(folder = '/home/agapi/Desktop/MasterThesis/Morphsnakes/nii_test')  
-      
+    x_data = read_cases(folder = '/home/agapi/Desktop/MasterThesis/Datasets/NIH_nii')
+    y_true = read_cases(folder = '/home/agapi/Desktop/MasterThesis/Datasets/NIH_labels_edited')
+    y_pred = read_cases(folder = '/home/agapi/Desktop/MasterThesis/Morphsnakes/nii_test')  
+       
     check_predictions(x_data, y_true, y_pred, True)
